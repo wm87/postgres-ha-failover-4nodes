@@ -1,0 +1,145 @@
+networks:
+  postgres-ha:
+    driver: bridge
+
+services:
+  # ---------------- ETCD Cluster ----------------
+  etcd1:
+    build: ./etcd
+    container_name: etcd1
+    environment:
+      - ETCD_NAME=etcd1
+    networks:
+      postgres-ha:
+        aliases:
+          - etcd1
+
+  etcd2:
+    build: ./etcd
+    container_name: etcd2
+    environment:
+      - ETCD_NAME=etcd2
+    networks:
+      postgres-ha:
+        aliases:
+          - etcd2
+
+  etcd3:
+    build: ./etcd
+    container_name: etcd3
+    environment:
+      - ETCD_NAME=etcd3
+    networks:
+      postgres-ha:
+        aliases:
+          - etcd3
+
+  # =====================
+  # Patroni PostgreSQL Nodes
+  # =====================
+  patroni1:
+    build: ./patroni
+    container_name: patroni1
+    user: "999:999"
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    volumes:
+      - ./patroni/patroni1.yml:/patroni/patroni.yml
+      - ./data/patroni1:/data/postgres
+      - ./patroni/scripts:/patroni/scripts
+    networks:
+      - postgres-ha
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: ["sh", "/patroni/scripts/wait-for-etcd.sh"]
+
+  patroni2:
+    build: ./patroni
+    container_name: patroni2
+    user: "999:999"
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    volumes:
+      - ./patroni/patroni2.yml:/patroni/patroni.yml
+      - ./data/patroni2:/data/postgres
+      - ./patroni/scripts:/patroni/scripts
+    networks:
+      - postgres-ha
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: ["sh", "/patroni/scripts/wait-for-etcd.sh"]
+
+  patroni3:
+    build: ./patroni
+    container_name: patroni3
+    user: "999:999"
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    volumes:
+      - ./patroni/patroni3.yml:/patroni/patroni.yml
+      - ./data/patroni3:/data/postgres
+      - ./patroni/scripts:/patroni/scripts
+    networks:
+      - postgres-ha
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: ["sh", "/patroni/scripts/wait-for-etcd.sh"]
+
+  patroni4:
+    build: ./patroni
+    container_name: patroni4
+    user: "999:999"
+    depends_on:
+      - etcd1
+      - etcd2
+      - etcd3
+    volumes:
+      - ./patroni/patroni4.yml:/patroni/patroni.yml
+      - ./data/patroni4:/data/postgres
+      - ./patroni/scripts:/patroni/scripts
+    networks:
+      - postgres-ha
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: ["sh", "/patroni/scripts/wait-for-etcd.sh"]
+
+  # =====================
+  # HAProxy for PostgreSQL
+  # =====================
+  haproxy:
+    image: haproxy:3.3.1
+    container_name: haproxy
+    depends_on:
+      patroni1:
+        condition: service_healthy
+      patroni2:
+        condition: service_healthy
+      patroni3:
+        condition: service_healthy
+      patroni4:
+          condition: service_healthy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    networks:
+      - postgres-ha
