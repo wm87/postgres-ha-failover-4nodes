@@ -1,14 +1,25 @@
+[![Docker](https://img.shields.io/badge/Docker-29.1.3-blue?logo=docker)](https://www.docker.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-blue?logo=postgresql)](https://www.postgresql.org/)
+[![Patroni](https://img.shields.io/badge/Patroni-4.1.0-orange)](https://patroni.readthedocs.io/)
+[![Etcd](https://img.shields.io/badge/Etcd-3.5.20-lightgrey)](https://etcd.io/)
+[![HAProxy](https://img.shields.io/badge/HAProxy-3.3.1-red)](https://www.haproxy.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 # PostgreSQL High Availability Cluster mit Patroni, Etcd und HAProxy - WIP
+
 
 ## Übersicht
 
-Dieses Projekt demonstriert einen hochverfügbaren PostgreSQL-Cluster mit Patroni für automatisches Failover, Etcd für verteilten Konsens und HAProxy für Load Balancing und Client-Verbindungsmanagement.
+Dieses Projekt demonstriert einen hochverfügbaren PostgreSQL-Cluster, der speziell für Szenarien entwickelt wurde, in denen Ausfallsicherheit und kontinuierliche Verfügbarkeit der Datenbank kritisch sind.
 
-## 🛠 work in progress
+Der Cluster nutzt **Patroni**, um automatisch einen Leader unter den PostgreSQL-Knoten zu wählen und ein Failover im Fehlerfall zu gewährleisten. **Etcd** dient dabei als verteiltes Konsenssystem, das den Clusterstatus überwacht und dafür sorgt, dass Entscheidungen wie Leader Election zuverlässig getroffen werden. **HAProxy** übernimmt die Rolle des Load Balancers und leitet Client-Anfragen intelligent an den aktuellen Leader für Schreiboperationen oder an die Replikate für Leseoperationen weiter.
 
-* dynamische Leader-Erkennung
+Dieses Setup eignet sich für Entwicklungs-, Test- und Produktionsumgebungen, in denen Hochverfügbarkeit, automatische Replikation und minimierte Ausfallzeiten gefordert sind. Zusätzlich wird in dieser Dokumentation erklärt, warum bestimmte Knotenzahlen (z.B. 4 PostgreSQL-Knoten, 3 Etcd-Knoten) gewählt wurden, wie Quorum berechnet wird und welche Best Practices für den Betrieb gelten.
+
+## 🛠 Work in Progress
+
+* Dynamische Leader-Erkennung
 * Schreib-Queries gehen automatisch an den Leader
-
 
 ## Architektur
 
@@ -24,7 +35,7 @@ Dieses Projekt demonstriert einen hochverfügbaren PostgreSQL-Cluster mit Patron
                        |              |              |              |
                   +--------+     +--------+     +--------+     +--------+
                   | Patroni|     | Patroni|     | Patroni|     | Patroni|
-                  |  Node 1|     |  Node 2|     |  Node 3|     |  Node 4|
+                  |  Node 1|     |  Node 2|     |  Node 3|     | Node 4 |
                   +--------+     +--------+     +--------+     +--------+
                        |              |              |              |
                        |              |              |              |
@@ -41,10 +52,31 @@ Dieses Projekt demonstriert einen hochverfügbaren PostgreSQL-Cluster mit Patron
 
 ### Architekturdetails
 
-* 4 PostgreSQL-Knoten (patroni1–patroni4) laufen als Docker-Container.
-* Etcd-Cluster (etcd1–etcd3) stellt verteilten Konsens bereit.
-* Patroni koordiniert die Knoten, übernimmt Leader Election und Replikationsmanagement.
-* HAProxy verteilt Lese-/Schreibanfragen an den Leader und Leseanfragen an Replikate.
+* **4 PostgreSQL-Knoten** (patroni1–patroni4) laufen als Docker-Container.
+
+  * **Warum 4 Knoten?** Drei Knoten reichen für Hochverfügbarkeit, ein zusätzlicher Knoten bietet mehr Redundanz und Lastverteilung.
+* **3 Etcd-Knoten** (etcd1–etcd3) für verteilten Konsens.
+
+  * **Warum 3 Etcd-Knoten?** Etcd benötigt eine ungerade Anzahl von Knoten, um Quorum zu erreichen.
+* **Quorum**: Die Mehrheit der Etcd-Knoten muss zustimmen, damit Entscheidungen wie Leader Election durchgeführt werden. Dies verhindert Split-Brain-Situationen.
+
+### Quorum-Berechnung
+
+Quorum = ⌊N/2⌋ + 1
+
+> Hinweis: Das Symbol ⌊ ⌋ bedeutet "Abrunden". Zum Beispiel: ⌊2.5⌋ = 2.
+
+| Anzahl Etcd-Knoten (N) | Quorum (⌊N/2⌋+1) | Max. Ausfälle erlaubt |
+| ---------------------- | ---------------- | --------------------- |
+| 1                      | 1                | 0                     |
+| 3                      | 2                | 1                     |
+| 5                      | 3                | 2                     |
+| 7                      | 4                | 3                     |
+
+*Beispiel:* Bei 3 Etcd-Knoten müssen mindestens 2 Knoten online sein, damit das Cluster funktionsfähig bleibt. Fällt ein Knoten aus, bleibt das Quorum erhalten, und Patroni kann weiterhin den Leader wählen.
+
+* **Patroni** koordiniert die Knoten, übernimmt Leader Election und Replikationsmanagement.
+* **HAProxy** verteilt Lese-/Schreibanfragen an den Leader und Leseanfragen an Replikate.
 
 ## Funktionalität
 
@@ -91,8 +123,6 @@ Dieses Projekt demonstriert einen hochverfügbaren PostgreSQL-Cluster mit Patron
 ## Zusammenfassung
 
 Dieses Setup bietet einen robusten PostgreSQL-HA-Cluster, der sich für Produktionsumgebungen eignet. Automatisches Failover, Echtzeit-Replikation und Hochverfügbarkeit für Lese- und Schreibzugriffe sorgen für Ausfallsicherheit und vereinfachen den Betrieb.
-
----
 
 ## 📜 Lizenz
 
